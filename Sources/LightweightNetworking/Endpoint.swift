@@ -11,8 +11,9 @@ public protocol Endpoint: Sendable {
     var method: HTTPMethod { get }
     var headers: [String: String]? { get }
     var query: [String: String]? { get }
-    var body: Body? { get set }
+    var body: Body? { get }
     var timeout: TimeInterval { get }
+    var authorization: AuthorizationRequirement { get }
 }
 
 // MARK: - HTTPMethod
@@ -32,6 +33,8 @@ extension Endpoint {
     public var query: [String: String]? { nil }
     public var body: Body? { nil }
     public var timeout: TimeInterval { 30 }
+    // Credentials are opt-in, so new public/third-party endpoints cannot receive Bearer tokens accidentally.
+    public var authorization: AuthorizationRequirement { .none }
 }
 
 // MARK: - Empty Response

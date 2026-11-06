@@ -3,6 +3,8 @@ import Foundation
 // MARK: - NetworkError
 
 public enum NetworkError: LocalizedError, Sendable {
+    case http(HTTPFailure)
+    case duplicateTaskID
     case invalidURL
     case invalidResponse
     case encodingError(String)
@@ -16,6 +18,10 @@ public enum NetworkError: LocalizedError, Sendable {
     
     public var errorDescription: String? {
         switch self {
+        case .http(let failure):
+            return "HTTP error with status code \(failure.statusCode)"
+        case .duplicateTaskID:
+            return "A request with this task ID is still active"
         case .invalidURL:
             return "Invalid URL"
             
@@ -49,6 +55,7 @@ public enum NetworkError: LocalizedError, Sendable {
     }
     
     public var statusCode: Int? {
+        if case .http(let failure) = self { return failure.statusCode }
         if case .serverError(let code, _) = self {
             return code
         }
@@ -59,13 +66,20 @@ public enum NetworkError: LocalizedError, Sendable {
     }
     
     public var responseData: Data? {
+        if case .http(let failure) = self { return failure.data }
         if case .serverError(_, let data) = self {
             return data
         }
         return nil
     }
     
+    public var responseHeaders: [String: String] {
+        if case .http(let failure) = self { return failure.headers }
+        return [:]
+    }
+
     public var isAuthenticationError: Bool {
+        if statusCode == 401 { return true }
         if case .unauthorized = self {
             return true
         }
@@ -73,7 +87,7 @@ public enum NetworkError: LocalizedError, Sendable {
     }
     
     public var isServerError: Bool {
-        if case .serverError(let code, _) = self, (500...599).contains(code) {
+        if let code = statusCode, (500...599).contains(code) {
             return true
         }
         return false
@@ -85,7 +99,10 @@ public enum NetworkError: LocalizedError, Sendable {
 extension NetworkError: Equatable {
     public static func == (lhs: NetworkError, rhs: NetworkError) -> Bool {
         switch (lhs, rhs) {
-        case (.invalidURL, .invalidURL),
+        case (.http(let left), .http(let right)):
+            return left == right
+        case (.duplicateTaskID, .duplicateTaskID),
+             (.invalidURL, .invalidURL),
              (.invalidResponse, .invalidResponse),
              (.unauthorized, .unauthorized),
              (.noData, .noData),
@@ -106,4 +123,20 @@ extension NetworkError: Equatable {
             return false
         }
     }
+}
+
+extension NetworkError {
+    static func normalizing(_ error: any Error) -> NetworkError {
+        if Task.isCancelled || error is CancellationError { return .cancelled }
+        if let error = error as? NetworkError { return error }
+        if let error = error as? URLError {
+            switch error.code {
+            case .cancelled: return .cancelled
+            case .timedOut: return .timeout
+            default: break
+            }
+        }
+        return .underlying(error)
+    }
+
 }

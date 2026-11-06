@@ -8,18 +8,11 @@ public struct ResponseValidator: Sendable {
             throw NetworkError.invalidResponse
         }
         
-        switch httpResponse.statusCode {
-        case 200..<300:
-            return
-            
-        case 401:
-            throw NetworkError.unauthorized
-            
-        case 408, 504:
-            throw NetworkError.timeout
-            
-        default:
-            throw NetworkError.serverError(statusCode: httpResponse.statusCode, data: data)
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let headers = httpResponse.allHeaderFields.reduce(into: [String: String]()) {
+                $0[String(describing: $1.key)] = String(describing: $1.value)
+            }
+            throw NetworkError.http(HTTPFailure(statusCode: httpResponse.statusCode, headers: headers, data: data))
         }
     }
     
